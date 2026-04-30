@@ -1,0 +1,20 @@
+{
+  "roles": [
+    "Program Manager",
+    "Project Manager",
+    "Strategy Manager",
+    "Strategy & Operations Manager",
+    "Transformation Manager",
+    "Business Transformation Consultant",
+    "Digital Transformation Consultant",
+    "AI Governance Manager",
+    "Responsible AI Manager",
+    "AI Programme Manager",
+    "Product Operations Manager",
+    "Product Manager"
+  ],
+  "location": "London",
+  "timeframe": "24h",
+  "minScore": 7,
+  "maxResults": 10
+}
