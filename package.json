@@ -11,7 +11,7 @@
     "sample": "node src/runSearch.js --sample"
   },
   "dependencies": {
-    "@apify/client": "^2.12.0",
+    "apify-client": "^2.12.0",
     "dotenv": "^16.4.5",
     "mammoth": "^1.8.0",
     "openai": "^4.104.0",
