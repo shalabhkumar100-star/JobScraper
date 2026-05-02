@@ -1,5 +1,3 @@
-import { runActor } from "../src/apifyClient.js";
-
 function normaliseJob(item) {
   const minSalary = item["salaryInsights/compensationBreakdown/0/minSalary"];
   const maxSalary = item["salaryInsights/compensationBreakdown/0/maxSalary"];
@@ -42,7 +40,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Role is required" });
     }
 
-    const actorId = "curious_coder/linkedin-jobs-scraper";
+    if (!process.env.APIFY_TOKEN) {
+      return res.status(500).json({ error: "Missing APIFY_TOKEN environment variable" });
+    }
 
     const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(role)}&location=${encodeURIComponent(location || "London")}&f_TPR=r86400`;
 
@@ -51,7 +51,25 @@ export default async function handler(req, res) {
       maxItems: 25,
     };
 
-    const results = await runActor(actorId, input);
+    const apifyUrl = `https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items?token=${process.env.APIFY_TOKEN}`;
+
+    const response = await fetch(apifyUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+
+    const results = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: results?.error?.message || results?.message || "Apify request failed",
+        details: results,
+      });
+    }
+
     const jobs = Array.isArray(results) ? results.map(normaliseJob) : [];
 
     return res.status(200).json({ jobs });
