@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import pdf from "pdf-parse";
 import mammoth from "mammoth";
+import formidable from "formidable";
+import fs from "fs";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -10,35 +12,42 @@ export const config = {
   },
 };
 
-async function parseFile(req) {
-  const chunks = [];
-  for await (const chunk of req) {
-    chunks.push(chunk);
-  }
-
-  const buffer = Buffer.concat(chunks);
-  const contentType = req.headers["content-type"] || "";
-
-  if (contentType.includes("pdf")) {
-    const data = await pdf(buffer);
-    return data.text;
-  }
-
-  if (contentType.includes("word") || contentType.includes("docx")) {
-    const result = await mammoth.extractRawText({ buffer });
-    return result.value;
-  }
-
-  return buffer.toString();
-}
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const cvText = await parseFile(req);
+    const form = formidable({ multiples: false });
+
+    const { fields, files } = await new Promise((resolve, reject) => {
+      form.parse(req, (err, fields, files) => {
+        if (err) reject(err);
+        else resolve({ fields, files });
+      });
+    });
+
+    const file = files.file;
+
+    if (!file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const buffer = fs.readFileSync(file.filepath);
+    let cvText = "";
+
+    if (file.mimetype.includes("pdf")) {
+      const data = await pdf(buffer);
+      cvText = data.text;
+    } else if (
+      file.mimetype.includes("word") ||
+      file.mimetype.includes("docx")
+    ) {
+      const result = await mammoth.extractRawText({ buffer });
+      cvText = result.value;
+    } else {
+      cvText = buffer.toString();
+    }
 
     const prompt = `
 You are analysing a CV.
