@@ -1,4 +1,4 @@
-import { ApifyClient } from "@apify/client";
+import { ApifyClient } from "apify-client";
 import dotenv from "dotenv";
 
 dotenv.config();
