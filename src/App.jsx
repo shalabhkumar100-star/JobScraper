@@ -1,70 +1,108 @@
 import React, { useState } from "react";
 
 export default function App() {
-  const [file, setFile] = useState(null);
-  const [roles, setRoles] = useState("");
-  const [output, setOutput] = useState("");
+  const [role, setRole] = useState("Program Manager");
+  const [location, setLocation] = useState("London");
+  const [results, setResults] = useState([]);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async () => {
-    if (!file) {
-      alert("Upload CV first");
+  const searchJobs = async () => {
+    if (!role.trim()) {
+      alert("Enter a role to search");
       return;
     }
 
     setLoading(true);
-    setOutput("");
+    setError("");
+    setResults([]);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("roles", roles);
-
-      const res = await fetch("/api/analyse-cv", {
+      const res = await fetch("/api/search-jobs", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, location }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Request failed");
+        throw new Error(data.error || "Search failed");
       }
 
-      setOutput(JSON.stringify(data, null, 2));
-    } catch (error) {
-      setOutput(`Error: ${error.message}`);
+      setResults(data.jobs || []);
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ padding: 40, fontFamily: "sans-serif" }}>
-      <h1>Job Intelligence Engine</h1>
+    <div style={{ padding: 40, fontFamily: "sans-serif", maxWidth: 1100, margin: "0 auto" }}>
+      <h1>Job Search Engine</h1>
+      <p>Search job boards by target role and location.</p>
 
-      <p>Upload your CV, then optionally add target roles.</p>
+      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr auto", alignItems: "end" }}>
+        <label>
+          Role
+          <input
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            placeholder="e.g. Program Manager"
+            style={{ display: "block", width: "100%", padding: 10, marginTop: 6 }}
+          />
+        </label>
 
-      <input
-        type="file"
-        accept=".txt,.pdf,.docx"
-        onChange={(e) => setFile(e.target.files[0] || null)}
-      />
+        <label>
+          Location
+          <input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="e.g. London"
+            style={{ display: "block", width: "100%", padding: 10, marginTop: 6 }}
+          />
+        </label>
 
-      {file && <p>Selected: {file.name}</p>}
+        <button onClick={searchJobs} disabled={loading} style={{ padding: "11px 18px" }}>
+          {loading ? "Searching..." : "Search Jobs"}
+        </button>
+      </div>
 
-      <textarea
-        placeholder="Target roles (optional)"
-        value={roles}
-        onChange={(e) => setRoles(e.target.value)}
-        style={{ width: "100%", marginTop: 20, minHeight: 100 }}
-      />
+      {error && <p style={{ color: "red", marginTop: 20 }}>Error: {error}</p>}
 
-      <button disabled={loading} onClick={handleSubmit} style={{ marginTop: 20 }}>
-        {loading ? "Processing..." : "Analyse CV"}
-      </button>
-
-      <pre style={{ marginTop: 30, whiteSpace: "pre-wrap" }}>{output}</pre>
+      <div style={{ marginTop: 30 }}>
+        {results.length > 0 && (
+          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", background: "white" }}>
+            <thead>
+              <tr>
+                <th align="left">Role</th>
+                <th align="left">Company</th>
+                <th align="left">Location</th>
+                <th align="left">Source</th>
+                <th align="left">Link</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((job, idx) => (
+                <tr key={idx} style={{ borderTop: "1px solid #ddd" }}>
+                  <td>{job.role}</td>
+                  <td>{job.company}</td>
+                  <td>{job.location}</td>
+                  <td>{job.source}</td>
+                  <td>
+                    {job.link ? (
+                      <a href={job.link} target="_blank" rel="noreferrer">Open</a>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
