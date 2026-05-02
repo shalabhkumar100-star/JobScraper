@@ -12,23 +12,31 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Role is required" });
     }
 
-    // Example: LinkedIn Jobs scraper actor (you can change this ID later)
-    const actorId = "apify/linkedin-jobs-scraper";
+    const actorId = "johnvc/Google-Jobs-Scraper";
 
     const input = {
-      keywords: role,
+      query: role,
       location: location || "London",
-      maxItems: 20,
+      country: "gb",
+      language: "en",
+      google_domain: "google.co.uk",
+      max_results: 20,
+      max_pagination: 1,
+      include_lrad: false
     };
 
     const results = await runActor(actorId, input);
 
-    const jobs = results.map((item) => ({
-      role: item.title || item.position || "",
-      company: item.companyName || "",
+    const rawJobs = Array.isArray(results)
+      ? results.flatMap((item) => item.jobs || item.results || item.items || item)
+      : [];
+
+    const jobs = rawJobs.map((item) => ({
+      role: item.title || item.role || "",
+      company: item.company_name || item.companyName || item.company || "",
       location: item.location || "",
-      source: "LinkedIn",
-      link: item.url || item.applyUrl || "",
+      source: "Google Jobs",
+      link: item.apply_link || item.applyLink || item.url || item.job_url || "",
     }));
 
     return res.status(200).json({ jobs });
