@@ -34,38 +34,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { role, location } = req.body;
-
-    if (!role) {
-      return res.status(400).json({ error: "Role is required" });
-    }
-
     if (!process.env.APIFY_TOKEN) {
       return res.status(500).json({ error: "Missing APIFY_TOKEN environment variable" });
     }
 
-    const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(role)}&location=${encodeURIComponent(location || "London")}&f_TPR=r86400`;
-
-    const input = {
-      urls: [searchUrl],
-      maxItems: 25,
-    };
-
-    const apifyUrl = `https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items?token=${process.env.APIFY_TOKEN}`;
+    const apifyUrl = `https://api.apify.com/v2/actor-tasks/cosmic_oversight~linkedin-jobs-scraper-task-1/run-sync-get-dataset-items?token=${process.env.APIFY_TOKEN}`;
 
     const response = await fetch(apifyUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-      },
-      body: JSON.stringify(input),
+      }
     });
 
     const results = await response.json();
 
     if (!response.ok) {
       return res.status(response.status).json({
-        error: results?.error?.message || results?.message || "Apify request failed",
+        error: results?.error?.message || results?.message || "Apify task request failed",
         details: results,
       });
     }
