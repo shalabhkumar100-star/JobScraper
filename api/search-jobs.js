@@ -38,7 +38,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Missing APIFY_TOKEN environment variable" });
     }
 
-    const apifyUrl = `https://api.apify.com/v2/actor-tasks/cosmic_oversight~linkedin-jobs-scraper-task-1/run-sync-get-dataset-items?token=${process.env.APIFY_TOKEN}`;
+    const taskId = "FhLmbqkmaKcBzJqdu";
+    const apifyUrl = `https://api.apify.com/v2/actor-tasks/${taskId}/run-sync-get-dataset-items?token=${process.env.APIFY_TOKEN}`;
 
     const response = await fetch(apifyUrl, {
       method: "POST",
