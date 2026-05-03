@@ -28,14 +28,64 @@ function normaliseJob(item) {
   };
 }
 
+function getRoleVariants(role) {
+  const cleanRole = String(role || "").trim();
+  const lower = cleanRole.toLowerCase();
+
+  const variantMap = {
+    "it auditor": ["IT Auditor", "Technology Auditor", "IT Audit", "Senior IT Auditor"],
+    "program manager": ["Program Manager", "Programme Manager", "Project Manager", "Transformation Manager"],
+    "project manager": ["Project Manager", "Programme Manager", "Program Manager"],
+    "product manager": ["Product Manager", "Product Owner", "Product Lead"],
+    "strategy manager": ["Strategy Manager", "Strategy & Operations", "Business Strategy Manager"],
+    "transformation manager": ["Transformation Manager", "Business Transformation", "Digital Transformation"],
+    "ai governance manager": ["AI Governance", "Responsible AI", "AI Risk", "AI Programme Manager"],
+  };
+
+  return variantMap[lower] || [cleanRole];
+}
+
 function buildLinkedInSearchUrl(role, location) {
+  const variants = getRoleVariants(role);
+  const query = variants.map((variant) => `"${variant}"`).join(" OR ");
+
   const params = new URLSearchParams({
-    keywords: role,
+    keywords: query,
     location: location || "London",
     f_TPR: "r86400",
+    f_JT: "F",
   });
 
   return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
+}
+
+function tokenise(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function isRelevantJob(job, role) {
+  const title = String(job.role || "").toLowerCase();
+  const targetTokens = tokenise(role).filter((token) => token.length > 2);
+
+  if (!targetTokens.length) return true;
+
+  const strictMatches = {
+    "it auditor": ["auditor", "audit", "technology risk", "it risk", "controls"],
+    "program manager": ["program", "programme", "project", "transformation"],
+    "project manager": ["project", "programme", "program"],
+    "product manager": ["product", "owner"],
+    "strategy manager": ["strategy", "strategic", "operations"],
+    "transformation manager": ["transformation", "change", "programme", "program"],
+    "ai governance manager": ["ai", "governance", "responsible", "risk"],
+  };
+
+  const allowed = strictMatches[String(role || "").toLowerCase()] || targetTokens;
+
+  return allowed.some((word) => title.includes(word));
 }
 
 export default async function handler(req, res) {
@@ -58,7 +108,7 @@ export default async function handler(req, res) {
 
     const input = {
       urls: [searchUrl],
-      count: 10,
+      count: 25,
       scrapeCompany: false,
       splitByLocation: false,
     };
@@ -84,9 +134,15 @@ export default async function handler(req, res) {
       });
     }
 
-    const jobs = Array.isArray(results) ? results.map(normaliseJob) : [];
+    const allJobs = Array.isArray(results) ? results.map(normaliseJob) : [];
+    const jobs = allJobs.filter((job) => isRelevantJob(job, role)).slice(0, 10);
 
-    return res.status(200).json({ jobs, searchUrl });
+    return res.status(200).json({
+      jobs,
+      searchUrl,
+      totalFetched: allJobs.length,
+      totalRelevant: jobs.length,
+    });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
