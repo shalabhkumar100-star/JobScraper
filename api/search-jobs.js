@@ -1,4 +1,56 @@
-function normaliseJob(item) {
+import OpenAI from "openai";
+
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const STATIC_ROLE_EXPANSIONS = {
+  "sox": [
+    "SOX Manager",
+    "SOX Compliance Manager",
+    "SOX Controls Manager",
+    "Internal Controls Manager",
+    "IT Controls Manager",
+    "Technology Controls Manager",
+    "ITGC Manager",
+    "SOX ITGC",
+    "Financial Controls Manager",
+    "Internal Audit SOX"
+  ],
+  "it sox": [
+    "IT SOX Manager",
+    "SOX ITGC Manager",
+    "IT General Controls",
+    "ITGC",
+    "IT Controls Manager",
+    "Technology Controls Manager",
+    "SOX Compliance Manager",
+    "Internal Controls Technology",
+    "IT Audit SOX",
+    "Technology Risk Controls"
+  ],
+  "it auditor": [
+    "IT Auditor",
+    "Senior IT Auditor",
+    "Technology Auditor",
+    "IT Audit Manager",
+    "Technology Audit Manager",
+    "IT Risk Auditor",
+    "Internal Audit Technology",
+    "Technology Risk Assurance"
+  ],
+  "ai governance": [
+    "AI Governance Manager",
+    "Responsible AI Manager",
+    "AI Risk Manager",
+    "AI Compliance Manager",
+    "AI Assurance Manager",
+    "Model Risk Manager",
+    "AI Policy Manager",
+    "AI Risk Management",
+    "Responsible AI Lead"
+  ]
+};
+
+function normaliseJob(item, sourceQuery = "") {
   const minSalary = item["salaryInsights/compensationBreakdown/0/minSalary"];
   const maxSalary = item["salaryInsights/compensationBreakdown/0/maxSalary"];
   const currency = item["salaryInsights/compensationBreakdown/0/currencyCode"] || "";
@@ -25,32 +77,46 @@ function normaliseJob(item) {
     posterName: item.jobPosterName || "",
     posterProfileUrl: item.jobPosterProfileUrl || "",
     description: item.descriptionText || "",
+    sourceQuery,
   };
 }
 
-function getRoleVariants(role) {
+async function expandRole(role) {
   const cleanRole = String(role || "").trim();
-  const lower = cleanRole.toLowerCase();
+  const key = cleanRole.toLowerCase();
+  const staticExpansions = STATIC_ROLE_EXPANSIONS[key] || [];
 
-  const variantMap = {
-    "it auditor": ["IT Auditor", "Technology Auditor", "IT Audit", "Senior IT Auditor"],
-    "program manager": ["Program Manager", "Programme Manager", "Project Manager", "Transformation Manager"],
-    "project manager": ["Project Manager", "Programme Manager", "Program Manager"],
-    "product manager": ["Product Manager", "Product Owner", "Product Lead"],
-    "strategy manager": ["Strategy Manager", "Strategy & Operations", "Business Strategy Manager"],
-    "transformation manager": ["Transformation Manager", "Business Transformation", "Digital Transformation"],
-    "ai governance manager": ["AI Governance", "Responsible AI", "AI Risk", "AI Programme Manager"],
-  };
+  if (!process.env.OPENAI_API_KEY) {
+    return [...new Set([cleanRole, ...staticExpansions])].slice(0, 12);
+  }
 
-  return variantMap[lower] || [cleanRole];
+  const prompt = `Expand this job search term into 8-12 real LinkedIn job titles and search phrases.
+
+Important:
+- Include exact job titles and adjacent titles.
+- Include compliance/control/audit variants where relevant.
+- Keep phrases short and suitable for LinkedIn job search.
+- Return ONLY a JSON array of strings.
+
+Search term: ${cleanRole}`;
+
+  try {
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+    });
+
+    const aiExpansions = JSON.parse(response.choices[0].message.content);
+    return [...new Set([cleanRole, ...staticExpansions, ...aiExpansions])].slice(0, 12);
+  } catch {
+    return [...new Set([cleanRole, ...staticExpansions])].slice(0, 12);
+  }
 }
 
-function buildLinkedInSearchUrl(role, location) {
-  const variants = getRoleVariants(role);
-  const query = variants.map((variant) => `"${variant}"`).join(" OR ");
-
+function buildLinkedInSearchUrl(query, location) {
   const params = new URLSearchParams({
-    keywords: query,
+    keywords: `"${query}"`,
     location: location || "London",
     f_TPR: "r86400",
     f_JT: "F",
@@ -59,33 +125,30 @@ function buildLinkedInSearchUrl(role, location) {
   return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
 }
 
-function tokenise(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
+function dedupeJobs(jobs) {
+  const seen = new Map();
+
+  for (const job of jobs) {
+    const key = `${job.role}|${job.company}|${job.location}`.toLowerCase();
+    if (!seen.has(key)) seen.set(key, job);
+  }
+
+  return Array.from(seen.values());
 }
 
-function isRelevantJob(job, role) {
-  const title = String(job.role || "").toLowerCase();
-  const targetTokens = tokenise(role).filter((token) => token.length > 2);
+function scoreRelevance(job, originalRole) {
+  const text = `${job.role} ${job.description}`.toLowerCase();
+  const role = String(originalRole || "").toLowerCase();
 
-  if (!targetTokens.length) return true;
-
-  const strictMatches = {
-    "it auditor": ["auditor", "audit", "technology risk", "it risk", "controls"],
-    "program manager": ["program", "programme", "project", "transformation"],
-    "project manager": ["project", "programme", "program"],
-    "product manager": ["product", "owner"],
-    "strategy manager": ["strategy", "strategic", "operations"],
-    "transformation manager": ["transformation", "change", "programme", "program"],
-    "ai governance manager": ["ai", "governance", "responsible", "risk"],
+  const keywordMap = {
+    "sox": ["sox", "controls", "internal controls", "itgc", "audit", "compliance"],
+    "it sox": ["sox", "itgc", "it general controls", "technology controls", "controls", "audit"],
+    "it auditor": ["it audit", "technology audit", "auditor", "audit", "technology risk", "controls"],
+    "ai governance": ["ai governance", "responsible ai", "ai risk", "model risk", "ai compliance", "ai assurance", "governance"],
   };
 
-  const allowed = strictMatches[String(role || "").toLowerCase()] || targetTokens;
-
-  return allowed.some((word) => title.includes(word));
+  const keywords = keywordMap[role] || role.split(/\s+/).filter(Boolean);
+  return keywords.reduce((score, keyword) => score + (text.includes(keyword) ? 1 : 0), 0);
 }
 
 export default async function handler(req, res) {
@@ -104,44 +167,49 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Missing APIFY_TOKEN environment variable" });
     }
 
-    const searchUrl = buildLinkedInSearchUrl(role, location);
-
-    const input = {
-      urls: [searchUrl],
-      count: 25,
-      scrapeCompany: false,
-      splitByLocation: false,
-    };
-
+    const expandedRoles = await expandRole(role);
     const apifyUrl = `https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items?token=${process.env.APIFY_TOKEN}`;
 
-    const response = await fetch(apifyUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(input),
-    });
+    let allJobs = [];
+    const searchUrls = [];
 
-    const results = await response.json();
+    for (const query of expandedRoles) {
+      const searchUrl = buildLinkedInSearchUrl(query, location);
+      searchUrls.push(searchUrl);
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: results?.error?.message || results?.message || "Apify actor request failed",
-        details: results,
-        input,
-        searchUrl,
+      const input = {
+        urls: [searchUrl],
+        count: 10,
+        scrapeCompany: false,
+        splitByLocation: false,
+      };
+
+      const response = await fetch(apifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
       });
+
+      const results = await response.json();
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const jobs = Array.isArray(results) ? results.map((job) => normaliseJob(job, query)) : [];
+      allJobs.push(...jobs);
     }
 
-    const allJobs = Array.isArray(results) ? results.map(normaliseJob) : [];
-    const jobs = allJobs.filter((job) => isRelevantJob(job, role)).slice(0, 10);
+    const uniqueJobs = dedupeJobs(allJobs)
+      .map((job) => ({ ...job, relevanceScore: scoreRelevance(job, role) }))
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
 
     return res.status(200).json({
-      jobs,
-      searchUrl,
+      jobs: uniqueJobs.slice(0, 30),
+      expandedRoles,
+      searchUrls,
       totalFetched: allJobs.length,
-      totalRelevant: jobs.length,
+      totalUnique: uniqueJobs.length,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
