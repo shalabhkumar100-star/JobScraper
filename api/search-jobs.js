@@ -71,8 +71,8 @@ function normaliseJob(item, sourceQuery = "") {
     seniority: item.seniorityLevel || "",
     workplaceType: item["workplaceTypes/0"] || (item.workRemoteAllowed ? "Remote" : ""),
     salary: salaryRange,
-    applyLink: item.applyUrl || item.link || "",
-    jobLink: item.link || "",
+    applyLink: item.applyUrl || item.link || item.inputUrl || "",
+    jobLink: item.link || item.inputUrl || item.applyUrl || "",
     companyLinkedinUrl: item.companyLinkedinUrl || "",
     posterName: item.jobPosterName || "",
     posterProfileUrl: item.jobPosterProfileUrl || "",
@@ -118,7 +118,7 @@ function buildLinkedInSearchUrl(query, location) {
   const params = new URLSearchParams({
     keywords: `"${query}"`,
     location: location || "London",
-    f_TPR: "r86400",
+    f_TPR: "r604800",
     f_JT: "F",
   });
 
@@ -179,7 +179,7 @@ export default async function handler(req, res) {
 
       const input = {
         urls: [searchUrl],
-        count: 10,
+        count: 25,
         scrapeCompany: false,
         splitByLocation: false,
       };
@@ -205,7 +205,7 @@ export default async function handler(req, res) {
       .sort((a, b) => b.relevanceScore - a.relevanceScore);
 
     return res.status(200).json({
-      jobs: uniqueJobs.slice(0, 30),
+      jobs: uniqueJobs.slice(0, 50),
       expandedRoles,
       searchUrls,
       totalFetched: allJobs.length,
