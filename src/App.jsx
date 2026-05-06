@@ -80,7 +80,7 @@ export default function App() {
                 <th align="left">Company</th>
                 <th align="left">Location</th>
                 <th align="left">Source</th>
-                <th align="left">Link</th>
+                <th align="left">Links</th>
               </tr>
             </thead>
             <tbody>
@@ -91,10 +91,21 @@ export default function App() {
                   <td>{job.location}</td>
                   <td>{job.source}</td>
                   <td>
-                    {job.link ? (
-                      <a href={job.link} target="_blank" rel="noreferrer">Open</a>
+                    {job.applyLink ? (
+                      <a href={job.applyLink} target="_blank" rel="noreferrer">
+                        Apply
+                      </a>
                     ) : (
                       "-"
+                    )}
+
+                    {job.jobLink && (
+                      <>
+                        {" | "}
+                        <a href={job.jobLink} target="_blank" rel="noreferrer">
+                          Job
+                        </a>
+                      </>
                     )}
                   </td>
                 </tr>
