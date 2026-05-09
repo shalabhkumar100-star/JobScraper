@@ -82,6 +82,7 @@ export default function App() {
         <div style={{ marginTop: 20, padding: 12, background: "#f4f4f4", borderRadius: 6 }}>
           <div><strong>Total fetched:</strong> {meta.totalFetched ?? "-"}</div>
           <div><strong>Total unique:</strong> {meta.totalUnique ?? "-"}</div>
+          <div><strong>Score:</strong> keyword relevance count in title + description. Higher means more matching role/domain keywords.</div>
           {meta.expandedRoles.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <strong>Expanded searches:</strong> {meta.expandedRoles.join(", ")}
@@ -92,13 +93,12 @@ export default function App() {
 
       <div style={{ marginTop: 30, overflowX: "auto" }}>
         {results.length > 0 && (
-          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", background: "white", minWidth: 1200 }}>
+          <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse", background: "white", minWidth: 1100 }}>
             <thead>
               <tr>
                 <th align="left">Role</th>
                 <th align="left">Company</th>
                 <th align="left">Location</th>
-                <th align="left">Posted</th>
                 <th align="left">Posted Date</th>
                 <th align="left">Deadline</th>
                 <th align="left">Score</th>
@@ -112,9 +112,8 @@ export default function App() {
                   <td>{job.role}</td>
                   <td>{job.company}</td>
                   <td>{job.location}</td>
-                  <td>{job.posted || "-"}</td>
-                  <td>{job.postedDate || "-"}</td>
-                  <td>{job.deadline || "-"}</td>
+                  <td>{job.postedDate || job.posted || "-"}</td>
+                  <td>{job.deadlineDate || job.deadline || "-"}</td>
                   <td>{job.relevanceScore ?? "-"}</td>
                   <td>{job.sourceQuery || "-"}</td>
                   <td>
