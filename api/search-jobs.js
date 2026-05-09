@@ -50,6 +50,45 @@ const STATIC_ROLE_EXPANSIONS = {
   ]
 };
 
+function formatDate(date) {
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function dateFromTimestamp(value) {
+  if (!value) return "";
+  const raw = Number(value);
+  if (!raw) return "";
+  const ms = raw > 9999999999 ? raw : raw * 1000;
+  return formatDate(new Date(ms));
+}
+
+function dateFromRelativeText(value) {
+  const text = String(value || "").toLowerCase();
+  if (!text) return "";
+
+  const now = new Date();
+  let date = new Date(now);
+
+  if (text.includes("today") || text.includes("hour") || text.includes("minute") || text.includes("just now")) {
+    return formatDate(date);
+  }
+
+  const dayMatch = text.match(/(\d+)\s+day/);
+  if (dayMatch) {
+    date.setDate(now.getDate() - Number(dayMatch[1]));
+    return formatDate(date);
+  }
+
+  const weekMatch = text.match(/(\d+)\s+week/);
+  if (weekMatch) {
+    date.setDate(now.getDate() - Number(weekMatch[1]) * 7);
+    return formatDate(date);
+  }
+
+  return "";
+}
+
 function normaliseJob(item, sourceQuery = "") {
   const minSalary = item["salaryInsights/compensationBreakdown/0/minSalary"];
   const maxSalary = item["salaryInsights/compensationBreakdown/0/maxSalary"];
@@ -60,12 +99,17 @@ function normaliseJob(item, sourceQuery = "") {
     ? `${currency} ${minSalary || ""}${minSalary && maxSalary ? " - " : ""}${maxSalary || ""} ${period}`.trim()
     : item.salary || "";
 
+  const postedRaw = item.postedAt || "";
+  const postedDate = dateFromTimestamp(item.postedAtTimestamp) || dateFromRelativeText(postedRaw);
+
   return {
     role: item.title || item.standardizedTitle || "",
     company: item.companyName || "",
     location: item.location || "",
     source: "LinkedIn",
-    posted: item.postedAt || "",
+    posted: postedRaw,
+    postedDate,
+    deadline: item.expireAt || "",
     applicants: item.applicantsCount ?? "",
     employmentType: item.employmentType || "",
     seniority: item.seniorityLevel || "",
