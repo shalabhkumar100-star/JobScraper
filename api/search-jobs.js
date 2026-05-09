@@ -68,11 +68,9 @@ function dateFromRelativeText(value) {
   if (!text) return "";
 
   const now = new Date();
-  let date = new Date(now);
+  const date = new Date(now);
 
-  if (text.includes("today") || text.includes("hour") || text.includes("minute") || text.includes("just now")) {
-    return formatDate(date);
-  }
+  if (text.includes("today") || text.includes("hour") || text.includes("minute") || text.includes("just now")) return formatDate(date);
 
   const dayMatch = text.match(/(\d+)\s+day/);
   if (dayMatch) {
@@ -89,6 +87,16 @@ function dateFromRelativeText(value) {
   return "";
 }
 
+function normaliseDeadline(value) {
+  const timestampDate = dateFromTimestamp(value);
+  if (timestampDate) return timestampDate;
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return formatDate(parsed);
+
+  return String(value || "");
+}
+
 function normaliseJob(item, sourceQuery = "") {
   const minSalary = item["salaryInsights/compensationBreakdown/0/minSalary"];
   const maxSalary = item["salaryInsights/compensationBreakdown/0/maxSalary"];
@@ -100,16 +108,15 @@ function normaliseJob(item, sourceQuery = "") {
     : item.salary || "";
 
   const postedRaw = item.postedAt || "";
-  const postedDate = dateFromTimestamp(item.postedAtTimestamp) || dateFromRelativeText(postedRaw);
+  const postedDate = dateFromTimestamp(item.postedAtTimestamp) || dateFromRelativeText(postedRaw) || postedRaw;
 
   return {
     role: item.title || item.standardizedTitle || "",
     company: item.companyName || "",
     location: item.location || "",
     source: "LinkedIn",
-    posted: postedRaw,
     postedDate,
-    deadline: item.expireAt || "",
+    deadlineDate: normaliseDeadline(item.expireAt),
     applicants: item.applicantsCount ?? "",
     employmentType: item.employmentType || "",
     seniority: item.seniorityLevel || "",
@@ -130,19 +137,9 @@ async function expandRole(role) {
   const key = cleanRole.toLowerCase();
   const staticExpansions = STATIC_ROLE_EXPANSIONS[key] || [];
 
-  if (!process.env.OPENAI_API_KEY) {
-    return [...new Set([cleanRole, ...staticExpansions])].slice(0, 12);
-  }
+  if (!process.env.OPENAI_API_KEY) return [...new Set([cleanRole, ...staticExpansions])].slice(0, 12);
 
-  const prompt = `Expand this job search term into 8-12 real LinkedIn job titles and search phrases.
-
-Important:
-- Include exact job titles and adjacent titles.
-- Include compliance/control/audit variants where relevant.
-- Keep phrases short and suitable for LinkedIn job search.
-- Return ONLY a JSON array of strings.
-
-Search term: ${cleanRole}`;
+  const prompt = `Expand this job search term into 8-12 real LinkedIn job titles and search phrases. Include exact job titles and adjacent titles. Include compliance/control/audit variants where relevant. Keep phrases short and suitable for LinkedIn job search. Return ONLY a JSON array of strings. Search term: ${cleanRole}`;
 
   try {
     const response = await client.chat.completions.create({
@@ -165,81 +162,51 @@ function buildLinkedInSearchUrl(query, location) {
     f_TPR: "r604800",
     f_JT: "F",
   });
-
   return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
 }
 
 function dedupeJobs(jobs) {
   const seen = new Map();
-
   for (const job of jobs) {
     const key = `${job.role}|${job.company}|${job.location}`.toLowerCase();
     if (!seen.has(key)) seen.set(key, job);
   }
-
   return Array.from(seen.values());
 }
 
 function scoreRelevance(job, originalRole) {
   const text = `${job.role} ${job.description}`.toLowerCase();
   const role = String(originalRole || "").toLowerCase();
-
   const keywordMap = {
     "sox": ["sox", "controls", "internal controls", "itgc", "audit", "compliance"],
     "it sox": ["sox", "itgc", "it general controls", "technology controls", "controls", "audit"],
     "it auditor": ["it audit", "technology audit", "auditor", "audit", "technology risk", "controls"],
     "ai governance": ["ai governance", "responsible ai", "ai risk", "model risk", "ai compliance", "ai assurance", "governance"],
   };
-
   const keywords = keywordMap[role] || role.split(/\s+/).filter(Boolean);
   return keywords.reduce((score, keyword) => score + (text.includes(keyword) ? 1 : 0), 0);
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
     const { role, location } = req.body || {};
-
-    if (!role) {
-      return res.status(400).json({ error: "Role is required" });
-    }
-
-    if (!process.env.APIFY_TOKEN) {
-      return res.status(500).json({ error: "Missing APIFY_TOKEN environment variable" });
-    }
+    if (!role) return res.status(400).json({ error: "Role is required" });
+    if (!process.env.APIFY_TOKEN) return res.status(500).json({ error: "Missing APIFY_TOKEN environment variable" });
 
     const expandedRoles = await expandRole(role);
     const apifyUrl = `https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items?token=${process.env.APIFY_TOKEN}`;
-
     let allJobs = [];
     const searchUrls = [];
 
     for (const query of expandedRoles) {
       const searchUrl = buildLinkedInSearchUrl(query, location);
       searchUrls.push(searchUrl);
-
-      const input = {
-        urls: [searchUrl],
-        count: 25,
-        scrapeCompany: false,
-        splitByLocation: false,
-      };
-
-      const response = await fetch(apifyUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-
+      const input = { urls: [searchUrl], count: 25, scrapeCompany: false, splitByLocation: false };
+      const response = await fetch(apifyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
       const results = await response.json();
-
-      if (!response.ok) {
-        continue;
-      }
-
+      if (!response.ok) continue;
       const jobs = Array.isArray(results) ? results.map((job) => normaliseJob(job, query)) : [];
       allJobs.push(...jobs);
     }
@@ -248,13 +215,7 @@ export default async function handler(req, res) {
       .map((job) => ({ ...job, relevanceScore: scoreRelevance(job, role) }))
       .sort((a, b) => b.relevanceScore - a.relevanceScore);
 
-    return res.status(200).json({
-      jobs: uniqueJobs.slice(0, 50),
-      expandedRoles,
-      searchUrls,
-      totalFetched: allJobs.length,
-      totalUnique: uniqueJobs.length,
-    });
+    return res.status(200).json({ jobs: uniqueJobs.slice(0, 50), expandedRoles, searchUrls, totalFetched: allJobs.length, totalUnique: uniqueJobs.length });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
