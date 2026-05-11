@@ -200,11 +200,12 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { role, location } = req.body || {};
+    const { role, location, expand = true, maxQueries = 12, count = 25 } = req.body || {};
     if (!role) return res.status(400).json({ error: "Role is required" });
     if (!process.env.APIFY_TOKEN) return res.status(500).json({ error: "Missing APIFY_TOKEN environment variable" });
 
-    const expandedRoles = await expandRole(role);
+    const shouldExpand = !["0", "false", "no"].includes(String(expand).toLowerCase());
+    const expandedRoles = (shouldExpand ? await expandRole(role) : [String(role).trim()]).slice(0, Number(maxQueries) || 12);
     const apifyUrl = `https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/run-sync-get-dataset-items?token=${process.env.APIFY_TOKEN}`;
     let allJobs = [];
     const searchUrls = [];
@@ -212,7 +213,7 @@ export default async function handler(req, res) {
     for (const query of expandedRoles) {
       const searchUrl = buildLinkedInSearchUrl(query, location);
       searchUrls.push(searchUrl);
-      const input = { urls: [searchUrl], count: 25, scrapeCompany: false, splitByLocation: false };
+      const input = { urls: [searchUrl], count: Number(count) || 25, scrapeCompany: false, splitByLocation: false };
       const response = await fetch(apifyUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
       const results = await response.json();
       if (!response.ok) continue;
