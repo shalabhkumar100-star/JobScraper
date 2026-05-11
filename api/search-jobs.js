@@ -1,8 +1,17 @@
 import OpenAI from "openai";
+import { flattenTargetRoles } from "../config/targetRoles.js";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+const TARGET_ROLE_EXPANSIONS = Object.fromEntries(
+  flattenTargetRoles().map((role) => [
+    role.targetRole.toLowerCase(),
+    role.searchTerms,
+  ]),
+);
+
 const STATIC_ROLE_EXPANSIONS = {
+  ...TARGET_ROLE_EXPANSIONS,
   "sox": [
     "SOX Manager",
     "SOX Compliance Manager",
